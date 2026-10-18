@@ -1,0 +1,76 @@
+name: macOS/Linux packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "recomp/**"
+      - ".github/workflows/unix-release.yml"
+
+permissions:
+  contents: read
+
+env:
+  # Same Musashi checkout as the local vendor folder (Musashi 4.10).
+  MUSASHI_REPO: https://github.com/kstenerud/Musashi.git
+  MUSASHI_COMMIT: 313ebf1bd9f4d0d93341eb5ce21fd8a119e9dbdd
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS-arm64
+            runner: macos-14
+          - name: Linux-x64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Musashi
+        run: |
+          git init -q recomp/vendor/Musashi-master
+          git -C recomp/vendor/Musashi-master fetch -q --depth 1 "$MUSASHI_REPO" "$MUSASHI_COMMIT"
+          git -C recomp/vendor/Musashi-master checkout -q FETCH_HEAD
+
+      - name: Install SDL2 back-end headers (Linux)
+        if: runner.os == 'Linux'
+        # Headers only: the bundled SDL2 dlopens these back ends on the player's machine.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential binutils \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev \
+            libxfixes-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl-dev libgl-dev libgbm-dev libdrm-dev libasound2-dev libpulse-dev \
+            libudev-dev libdbus-1-dev
+
+      - name: Build bundled SDL2
+        run: recomp/unix/build-sdl2.sh
+
+      - name: Build package
+        run: python3 recomp/package.py
+
+      - name: Smoke test extracted package
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="dist/release-staging/Moonstone-2026-${{ matrix.name }}.tar.gz"
+          mkdir smoke
+          tar -xzf "$archive" -C smoke
+          cd "smoke/Moonstone-2026-${{ matrix.name }}"
+          # No ADFs: the game must start, run the setup check, log it and exit.
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./moonstone || true
+          cat moonstone.log
+          grep -q "SETUP CHECK" moonstone.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Moonstone-2026-${{ matrix.name }}
+          path: dist/release-staging/Moonstone-2026-${{ matrix.name }}.tar.gz
+          if-no-files-found: error

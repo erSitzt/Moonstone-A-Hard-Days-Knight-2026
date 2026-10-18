@@ -1,7 +1,7 @@
 # Moonstone 2026
 
-Native Windows port of *Moonstone: A Hard Days Knight* (Mindscape, 1991),
-with local multiplayer. No external emulator or Kickstart ROM required.
+Native Windows, macOS and Linux port of *Moonstone: A Hard Days Knight*
+(Mindscape, 1991), with local multiplayer. No external emulator or Kickstart ROM required.
 
 ## Quickstart
 
@@ -17,6 +17,16 @@ with local multiplayer. No external emulator or Kickstart ROM required.
 - The first controller used during startup becomes the main controller and Player 1 in Practice.
 - ADF files should be sourced from **wowroms** or they may not work.
 - This port requires 64-bit Windows.
+
+### macOS and Linux
+
+Build the game natively from this repository (see
+[BUILDING.md](recomp/BUILDING.md#macos-and-linux)): fetch Musashi into
+`recomp/vendor/`, build the bundled SDL2 with `recomp/unix/build-sdl2.sh`, then
+run `python3 recomp/package.py`. The package includes SDL2, so players need
+nothing else installed. Put the 3 ADFs into the
+package's `data` folder and start `Moonstone Singleplayer.command` (macOS) or
+`./"Moonstone Singleplayer.sh"` (Linux). Saves are compatible with the Windows version.
 
 ## Basic controls
 
