@@ -80,3 +80,51 @@ compression or a runtime decoder. Regenerate it with
 960x768 output unchanged unless an artwork change is requested. The compiler
 checks the array length, and `check_splash.py` verifies its pixels against the
 source and an earlier build. Normal builds consume this checked-in header.
+
+## macOS and Linux
+
+The same `build.py`/`package.py` commands build a native game on macOS (Apple
+Silicon or Intel) and Linux, using the system C compiler and SDL2 instead of the
+Zig/Windows bundle. The Windows recipe, launcher hashes and release gate are
+unchanged and only run on Windows.
+
+Install the tools once:
+
+```bash
+brew install sdl2                                  # macOS (Xcode command line tools provide cc)
+sudo apt install build-essential libsdl2-dev git   # Debian/Ubuntu
+```
+
+A system SDL2 is enough for development builds. Packages bundle SDL2 next to
+the binary, which needs an SDL2 built by `unix/build-sdl2.sh` (SDL 2.32.10 from
+the checksummed release tarball, into `recomp/vendor/SDL2-unix`; `build.py`
+prefers it when present). Homebrew's `sdl2` is sdl2-compat, which needs SDL3 at
+runtime, and the Debian/Ubuntu library links X11/PulseAudio/Wayland directly, so
+`package.py` refuses both. On Linux, install the back-end headers first so SDL
+can `dlopen` them on the player's machine (list in
+`.github/workflows/unix-release.yml`).
+
+Fetch Musashi into the ignored vendor folder, then build from the repository root:
+
+```bash
+git clone https://github.com/kstenerud/Musashi.git recomp/vendor/Musashi-master
+recomp/unix/build-sdl2.sh
+python3 recomp/build.py --profile release
+python3 recomp/package.py
+```
+
+The build writes `recomp/build/release/moonstone` plus two launchers
+(`Moonstone Singleplayer`/`Multiplayer`, `.command` on macOS for Finder
+double-click, `.sh` on Linux) that pass `--save-profile`. Development builds
+(`python3 recomp/build.py`), `--typecheck` and `--probe` work as on Windows.
+`package.py` creates `dist/release-staging/Moonstone-2026-<OS>-<arch>/` with the
+same allowlisted layout as the Windows ZIP and a `.tar.gz` next to it. It contains
+`libSDL2-2.0.0.dylib` (macOS, loaded via `@executable_path`, binary re-signed
+ad hoc) or `libSDL2-2.0.so.0` (Linux, loaded via the `$ORIGIN` runpath), so
+players install nothing. The GitHub Actions workflow `unix-release.yml` builds
+the macOS arm64 and Linux x64 archives.
+
+Musashi is configured through `unix/m68kconf_moon.h` (passed as `MUSASHI_CNF`),
+so the vendor checkout stays unmodified: instruction, illegal-opcode and TRAP
+hooks call into `moon.c`, and 68000 TRACE emulation is on for Mog's CPU probe
+(see `RE_NOTES.md`).

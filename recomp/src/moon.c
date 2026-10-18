@@ -82,6 +82,17 @@ static void compute_exedir(const char *argv0) {
         for (char *p = buf; *p; p++) if (*p=='\\'||*p=='/') slash = p;
         if (slash) { *slash = 0; snprintf(g_exedir, sizeof(g_exedir), "%s", buf); return; }
     }
+#else
+    /* macOS/Linux: argv0 is unreliable via $PATH or symlinks; ask SDL. */
+    char *base = SDL_GetBasePath();
+    if (base) {
+        size_t n = strlen(base);
+        while (n > 1 && base[n-1] == '/') base[--n] = 0;
+        int ok = n > 0 && n < sizeof(g_exedir);
+        if (ok) snprintf(g_exedir, sizeof(g_exedir), "%s", base);
+        SDL_free(base);
+        if (ok) return;
+    }
 #endif
     /* fallback: derive from argv0 */
     if (argv0 && *argv0) {
@@ -9676,8 +9687,7 @@ int main(int argc, char **argv) {
 #endif
     if (sdl) { int rc = run_sdl(scale); if (g_log!=stderr) fclose(g_log); return rc; }
 #if MOON_DEVELOPER
-    LARGE_INTEGER pf; QueryPerformanceFrequency(&pf);
-    double pf_ms = 1000.0 / (double)pf.QuadPart;
+    double pf_ms = 1000.0 / (double)SDL_GetPerformanceFrequency();
     double emu_max=0, emu_sum=0, ren_max=0, ren_sum=0; int ftn=0;
     for (int fr = 0; fr < frames && !g_stop; fr++) {
         g_cur_frame = fr;
@@ -9704,7 +9714,7 @@ int main(int argc, char **argv) {
         if (press_frame >= 0 && fr >= press_frame) { g_fire = 1; g_fire2 = 1; }
         if (clickthru) { g_fire = g_fire2 = ((fr % 50) < 10) ? 1 : 0; } /* pulse fire */
         /* run one PAL frame in small bursts so the beam advances finely */
-        LARGE_INTEGER t0,t1,t2; if (g_ftime) QueryPerformanceCounter(&t0);
+        Uint64 t0=0,t1=0,t2=0; if (g_ftime) t0 = SDL_GetPerformanceCounter();
         g_frame_cycle = 0;
         int zeroburst = 0;
         while (g_frame_cycle < CYCLES_PER_FRAME && !g_stop) {
@@ -9728,13 +9738,13 @@ int main(int argc, char **argv) {
              * (see audio_advance) -- one-shot SFX no longer auto-loop a 2nd pass */
             audio_advance((int)((int64_t)SMP_PER_FRAME * g_frame_cycle / CYCLES_PER_FRAME));
         }
-        if (g_ftime) QueryPerformanceCounter(&t1);
+        if (g_ftime) t1 = SDL_GetPerformanceCounter();
         /* vertical blank: capture the (now-stable) displayed frame BEFORE the
          * next frame's foreground starts rebuilding the copper list, then raise
          * VERTB (bit5) so the game's L3 handler runs at the start of vblank. */
         capture_frame();
-        if (g_ftime) { QueryPerformanceCounter(&t2);
-            double e=(t1.QuadPart-t0.QuadPart)*pf_ms, r=(t2.QuadPart-t1.QuadPart)*pf_ms;
+        if (g_ftime) { t2 = SDL_GetPerformanceCounter();
+            double e=(double)(t1-t0)*pf_ms, r=(double)(t2-t1)*pf_ms;
             emu_sum+=e; ren_sum+=r; if(e>emu_max)emu_max=e; if(r>ren_max)ren_max=r; ftn++;
         }
         if (vertb_gate()) g_custom[0x09c>>1] |= 0x0020;
